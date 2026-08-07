@@ -108,5 +108,38 @@ public class StorageService {
             return tempFile;
         }
     }
+    
+    /**
+     * 🎯 IMMEDIATE CLOUD CLEANUP
+     * Erases the targeted video file from Backblaze B2 instantly.
+     */
+    public void deleteFileFromStorage(String fileKey) {
+        if (fileKey == null || fileKey.isBlank()) return;
+
+        System.setProperty("aws.accessKeyId", accessKey);
+        System.setProperty("aws.secretAccessKey", secretKey);
+        System.setProperty("aws.region", region);
+
+        try (software.amazon.awssdk.services.s3.S3Client s3Client = software.amazon.awssdk.services.s3.S3Client.builder()
+                .endpointOverride(URI.create(endpoint))
+                .region(software.amazon.awssdk.regions.Region.of(region))
+                .forcePathStyle(true)
+                .build()) {
+
+            software.amazon.awssdk.services.s3.model.DeleteObjectRequest deleteRequest = 
+                software.amazon.awssdk.services.s3.model.DeleteObjectRequest.builder()
+                    .bucket("gym-videos")
+                    .key(fileKey)
+                    .build();
+
+            s3Client.deleteObject(deleteRequest);
+            LOGGER.info("🗑️ Successfully deleted temporary file [{}] from Backblaze B2 storage.", fileKey);
+
+        } catch (Exception e) {
+            // Log as error but do not throw, so it doesn't interrupt the user's workout feedback response
+            LOGGER.error("⚠️ Failed to delete file [{}] from Backblaze storage: {}", fileKey, e.getMessage());
+        }
+    }
+
 
 }

@@ -87,6 +87,12 @@ public class SquatController {
             if (temporaryVideoFile != null && temporaryVideoFile.exists()) {
                 temporaryVideoFile.delete();
             }
+            // 🎯 CLOUD BUCKET PURGE: Immediately erases the 70MB video file from Backblaze B2!
+            try {
+                storageService.deleteFileFromStorage(fileKey);
+            } catch (Exception e) {
+                // Failsafe catch block to prevent any secondary anomalies from disturbing tracking buffers
+            }
         }
     }
 }
