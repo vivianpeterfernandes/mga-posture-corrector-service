@@ -18,19 +18,35 @@ import com.mygym.app.model.SquatAnalysisResult;
 @Service
 public class SquatAnalysisService {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(SquatAnalysisService.class);
-	
+    private static final Logger LOGGER = LoggerFactory.getLogger(SquatAnalysisService.class);
+    
     private final PoseEstimationService poseEstimationService;
 
-    public SquatAnalysisService(VideoProcessingService videoProcessingService, PoseEstimationService poseEstimationService) {
+    public SquatAnalysisService(PoseEstimationService poseEstimationService) {
         this.poseEstimationService = poseEstimationService;
     }
 
+    /**
+     * 🎯 MULTIPART COMPATIBILITY ENTRY (Bridges legacy workflows or local development tools)
+     */
     public SquatAnalysisResult analyzeSquatVideo(MultipartFile file) throws Exception {
         Path cachedVideoPath = Files.createTempFile("squat_session_", ".mp4");
         file.transferTo(cachedVideoPath.toFile());
         File videoFile = cachedVideoPath.toFile();
 
+        try {
+            return analyzeSquatVideoFile(videoFile);
+        } finally {
+            // Delete legacy multipart temp paths cleanly
+            Files.deleteIfExists(cachedVideoPath);
+        }
+    }
+
+    /**
+     * 🎯 THE NEW STANDALONE CLOUD ENGINE CORE INTERFACE
+     * Processes video files streamed directly down from your Supabase Object Storage bucket.
+     */
+    public SquatAnalysisResult analyzeSquatVideoFile(File videoFile) throws Exception {
         try {
             double totalVerticalLength = 0;
             long processedFramesCount = 0;
@@ -48,8 +64,8 @@ public class SquatAnalysisService {
                  org.bytedeco.javacv.Java2DFrameConverter converter = new org.bytedeco.javacv.Java2DFrameConverter()) {
                 
                 grabber.setImageMode(org.bytedeco.javacv.FrameGrabber.ImageMode.COLOR);
-                
                 grabber.start();
+                
                 org.bytedeco.javacv.Frame frame;
                 int counter = 0;
                 int frameInterval = 3;
@@ -60,7 +76,6 @@ public class SquatAnalysisService {
                         BufferedImage rawCanvas = converter.convert(frame);
                         if (rawCanvas == null) continue;
 
-                        // Isolate, pass, and immediately discard image objects to let JVM garbage collection recycle bytes
                         Keypoints kp = poseEstimationService.predictKeypoints(rawCanvas);
                         processedFramesCount++;
                         totalVerticalLength += (kp.ankleY() - kp.shoulderY());
@@ -68,7 +83,6 @@ public class SquatAnalysisService {
                         double kneeAngle = calculateJointAngle(kp.hipX(), kp.hipY(), kp.kneeX(), kp.kneeY(), kp.ankleX(), kp.ankleY());
                         double backAngle = calculateTorsoLean(kp.hipX(), kp.hipY(), kp.shoulderX(), kp.shoulderY());
 
-                        // Track global absolute depth achievements across the video stream
                         if (kneeAngle < deepestKneeAngle && kneeAngle > 35.0) {
                             deepestKneeAngle = kneeAngle;
                         }
@@ -76,29 +90,27 @@ public class SquatAnalysisService {
                             maxForwardLean = backAngle;
                         }
 
-                        // STATE 1: Detecting the descent entry into the active squat zone (Below 110 degrees)
+                        // STATE 1: Detecting descent entry
                         if (!inSquatZone && kneeAngle < 110.0) {
                             inSquatZone = true;
                             currentRepMinAngle = kneeAngle;
                             currentRepMaxLean = backAngle;
                         } 
-                        // STATE 2: Trapped inside the squat loop tracking the turnaround trajectory metric
+                        // STATE 2: Trapped inside the loop tracking turnaround
                         else if (inSquatZone) {
                             if (kneeAngle < currentRepMinAngle) {
-                                currentRepMinAngle = kneeAngle; // Lock the absolute deepest point of this rep
+                                currentRepMinAngle = kneeAngle;
                             }
                             if (backAngle > currentRepMaxLean) {
-                                currentRepMaxLean = backAngle;  // Capture form warnings
+                                currentRepMaxLean = backAngle;
                             }
 
-                            // STATE 3: Clean exit validation boundary (Athlete must stand up past 145 degrees)
+                            // STATE 3: Clean exit validation
                             if (kneeAngle > 145.0) {
-                                // Core Guardrail: Rep is only credited if they achieved true parallel depth (<= 105 degrees)
                                 if (currentRepMinAngle <= 105.0) {
                                     repCounter++;
                                     bottomAngles.add(currentRepMinAngle);
                                 }
-                                // Reset rep-specific tracker contexts for the next repetition block loop
                                 inSquatZone = false;
                                 currentRepMinAngle = 180.0;
                             }
@@ -113,7 +125,8 @@ public class SquatAnalysisService {
             }
 
             double avgVerticalLength = totalVerticalLength / processedFramesCount;
-            LOGGER.debug("Processed Frames: " + processedFramesCount + " | Calculated Avg Vertical Distance: " + avgVerticalLength);
+            LOGGER.debug("Processed Frames: {} | Calculated Avg Vertical Distance: {}", processedFramesCount, avgVerticalLength);
+            
             if (avgVerticalLength < 45.0) {
                 throw new IllegalArgumentException(
                     "Exercise Rejected: The uploaded video does not appear to be a squat. " +
@@ -121,19 +134,23 @@ public class SquatAnalysisService {
                 );
             }
 
-            String videoUrl = ""; // Bypasses video rendering pipeline completely to ensure high-speed processing
+            String videoUrl = ""; // Bypasses video rendering pipeline to ensure top performance
 
             StringBuilder feedback = new StringBuilder();
             feedback.append(String.format("Workout Completed! Tracked %d valid parallel repetitions. ", repCounter));
             feedback.append(String.format("Peak overall depth achieved: %d°. ", Math.round(deepestKneeAngle)));
 
-            if (maxForwardLean > 40.0) 
+            if (maxForwardLean > 40.0) {
                 feedback.append(String.format("Form Warning: Excessive torso leaning detected (%d°). Keep your chest up to protect your lower back. ", Math.round(maxForwardLean)));
+            }
+
+            // 🎯 CONSTRUCTOR REPAIR: Perfectly maps your parameters directly to your model file schema
             return new SquatAnalysisResult(
                 "SQUAT", repCounter, deepestKneeAngle, maxForwardLean, false, feedback.toString(), bottomAngles, videoUrl
             );
+            
         } finally {
-            Files.deleteIfExists(cachedVideoPath);
+            // 🎯 SYSTEM MEMORY DRAIN TRAP: Instantly forces GC optimization updates
             System.gc();
             System.runFinalization();
         }

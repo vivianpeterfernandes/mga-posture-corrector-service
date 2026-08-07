@@ -81,6 +81,13 @@
 			<scope>runtime</scope>
 		</dependency>
 		
+		<!-- Superbase Bucket Storage -->
+		<dependency>
+    		<groupId>software.amazon.awssdk</groupId>
+    		<artifactId>s3</artifactId>
+    		<version>2.25.15</version>
+		</dependency>
+		
 		<!-- Computer Vision & AI Inference Toolkits -->
 		<dependency>
 			<groupId>org.bytedeco</groupId>
