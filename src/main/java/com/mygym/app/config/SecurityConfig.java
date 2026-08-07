@@ -39,8 +39,8 @@ public class SecurityConfig {
                 .requestMatchers("/error").permitAll()
                 
                 // Route mapping paths
-                .requestMatchers("/api/analyze/request-url").authenticated()
-                .requestMatchers("/api/analyze/squat").authenticated()
+                .requestMatchers("/api/analyze/request-url").permitAll()
+                .requestMatchers("/api/analyze/squat").permitAll()
                 .requestMatchers("/api/analyze", "/api/analyze/**").authenticated()
                 
                 .anyRequest().authenticated()

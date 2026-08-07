@@ -1,16 +1,25 @@
 package com.mygym.app.controller;
 
-import com.mygym.app.model.SquatAnalysisResult;
-import com.mygym.app.service.SquatAnalysisService;
-import com.mygym.app.service.StorageService;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.util.Map;
 
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.mygym.app.model.SquatAnalysisResult;
+import com.mygym.app.service.SquatAnalysisService;
+import com.mygym.app.service.StorageService;
+
 @RestController
 @RequestMapping({"/api/analyze", "/api/analyze/"})
+@CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.OPTIONS})
 public class SquatController {
 
     private final SquatAnalysisService squatAnalysisService;

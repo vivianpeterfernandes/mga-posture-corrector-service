@@ -13,7 +13,7 @@
 	
 	<groupId>com.mygym.app</groupId>
 	<artifactId>mga-posture-corrector-service</artifactId>
-	<version>0.0.1</version>
+	<version>0.0.2</version>
 	<name>mga-posture-corrector-service</name>
 	<description>Business Layer Service</description>
 	<url />
