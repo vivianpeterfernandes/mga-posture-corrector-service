@@ -3,6 +3,8 @@ package com.mygym.app.controller;
 import java.io.File;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +23,8 @@ import com.mygym.app.service.StorageService;
 @RequestMapping({"/api/analyze", "/api/analyze/"})
 @CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.OPTIONS})
 public class SquatController {
+	
+	private static final Logger LOGGER = LoggerFactory.getLogger(SquatController.class);
 
     private final SquatAnalysisService squatAnalysisService;
     private final StorageService storageService;
@@ -76,6 +80,7 @@ public class SquatController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(400).body(Map.of("success", false, "error", e.getLocalizedMessage()));
         } catch (Exception e) {
+        	LOGGER.error(e.getLocalizedMessage());
             return ResponseEntity.status(500).body(Map.of("success", false, "error", "Internal server core error: " + e.getMessage()));
         } finally {
             // 🎯 MEMORY GARBAGE COLLECTION TRAP: Clean up scratch space immediately to avoid running out of storage

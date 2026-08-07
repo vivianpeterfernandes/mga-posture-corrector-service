@@ -30,6 +30,9 @@ public class StorageService {
 
     @Value("${AWS_S3_SECRET_ACCESS_KEY}")
     private String secretKey;
+    
+    @Value("${AWS_S3_BUCKET_NAME:gym-videos}")
+    private String bucketName;
 
     public Map<String, String> generateUploadUrl(String originalFileName) {
         String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
@@ -45,7 +48,7 @@ public class StorageService {
                 .build()) {
 
             PutObjectRequest objectRequest = PutObjectRequest.builder()
-                    .bucket("gym-videos")
+            		.bucket(bucketName)
                     .key(uniqueFileName)
                     .contentType("video/mp4")
                     .build();
@@ -81,7 +84,7 @@ public class StorageService {
                 .build()) {
 
             software.amazon.awssdk.services.s3.model.GetObjectRequest getObjectRequest = software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
-                    .bucket("gym-videos")
+            		.bucket(bucketName)
                     .key(fileKey)
                     .build();
 
