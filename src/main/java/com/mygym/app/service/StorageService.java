@@ -1,7 +1,12 @@
 package com.mygym.app.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import com.mygym.app.config.SecurityConfig;
+
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -18,6 +23,8 @@ import java.util.UUID;
 
 @Service
 public class StorageService {
+	
+	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityConfig.class);
 
     @Value("${AWS_S3_ENDPOINT}")
     private String endpoint;
@@ -40,6 +47,7 @@ public class StorageService {
         // Direct System Environment Variable Credential Mappings
         System.setProperty("aws.accessKeyId", accessKey);
         System.setProperty("aws.secretAccessKey", secretKey);
+        System.setProperty("aws.region", region);
 
         try (S3Presigner presigner = S3Presigner.builder()
                 .endpointOverride(URI.create(endpoint))
@@ -91,9 +99,12 @@ public class StorageService {
             // Create a temporary tracking file descriptor path within the runtime container
             File tempFile = File.createTempFile("mga_upload_", ".mp4");
             
-            // Stream raw object bytes straight onto disk storage cache loops
-            s3Client.getObject(getObjectRequest, software.amazon.awssdk.core.sync.ResponseTransformer.toFile(tempFile));
+            try (software.amazon.awssdk.core.ResponseInputStream<?> s3Stream = s3Client.getObject(getObjectRequest)) {
+                
+                java.nio.file.Files.copy(s3Stream, tempFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
             
+            LOGGER.info("🎯 Successfully downloaded video file onto container scratchpad. Size: {} bytes", tempFile.length());
             return tempFile;
         }
     }
