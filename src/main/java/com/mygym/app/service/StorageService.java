@@ -3,6 +3,7 @@ package com.mygym.app.service;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
@@ -40,6 +41,7 @@ public class StorageService {
         try (S3Presigner presigner = S3Presigner.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of(region))
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
                 .build()) {
 
             PutObjectRequest objectRequest = PutObjectRequest.builder()
@@ -75,6 +77,7 @@ public class StorageService {
         try (software.amazon.awssdk.services.s3.S3Client s3Client = software.amazon.awssdk.services.s3.S3Client.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of(region))
+                .forcePathStyle(true)
                 .build()) {
 
             software.amazon.awssdk.services.s3.model.GetObjectRequest getObjectRequest = software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
