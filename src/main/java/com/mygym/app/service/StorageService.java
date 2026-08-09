@@ -56,11 +56,12 @@ public class StorageService {
                         .build())
                 .build()) {
 
-            // 🎯 FIX: Remove strict .contentType("video/mp4") matching constraints from the signing loop.
-            // This stops Java from expecting case-sensitive validation keys on the cloud bucket side!
+            // 🎯 THE MANDATORY BACK-END FIX: 
+            // Force the AWS SDK to sign the UNSIGNED-PAYLOAD header key during pre-signature computation!
             PutObjectRequest objectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(uniqueFileName)
+                    .overrideConfiguration(b -> b.putHeader("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"))
                     .build();
 
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
@@ -70,7 +71,6 @@ public class StorageService {
 
             PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
             
-            // 🎯 BACKEND DIAGNOSTIC LOG INSIGHT:
             LOGGER.info("🔮 GENERATED PRESIGNED URL ROUTE: {}", presignedRequest.url().toString());
             LOGGER.info("🔮 SIGNED HEADERS VERIFICATION ARRAY: {}", presignedRequest.signedHeaders());
 
@@ -82,6 +82,7 @@ public class StorageService {
             return responseMap;
         }
     }
+
     
     /**
      * Streams video chunks from the bucket straight onto the platform's free temporary file scratchpad.
