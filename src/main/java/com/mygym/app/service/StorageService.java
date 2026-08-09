@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 import java.io.File;
 import java.net.URI;
+import java.net.URL;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -52,12 +53,9 @@ public class StorageService {
                 .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
                 .build()) {
 
-            // 🎯 CONFIGURE TRACKING OBJECT
             PutObjectRequest objectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(uniqueFileName)
-                    // If you added an overrideConfiguration header injection block, it maps here
-                    // .overrideConfiguration(b -> b.putHeader("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"))
                     .build();
 
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
@@ -65,19 +63,29 @@ public class StorageService {
                     .putObjectRequest(objectRequest)
                     .build();
 
-            // 🎯 COMPUTE GENERATED SIGNATURE PROPERTIES
             PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
             
             // =====================================================================
-            // 🔮 HIGH-DENSITY RUNTIME AUDIT LOG MATRIX (Wipes out Guesswork)
+            // 🔮 RAW CREDENTIAL AUDIT LOGGER (Zero Guesswork Alignment)
             // =====================================================================
             LOGGER.info("====================================================================");
-            LOGGER.info("🔍 DIAGNOSTIC CONTAINER TRACE ID: STORAGE-SERVICE-LIVE-AUDIT");
-            LOGGER.info("► CURRENT SYSTEM DIRECTORY (user.dir): {}", System.getProperty("user.dir"));
-            LOGGER.info("► TARGET S3 BUCKET / ENDPOINT DESTINATION: {} / {}", bucketName, endpoint);
-            LOGGER.info("► EXTRACTED CRITICAL SIGNED HEADERS ARRAY: {}", presignedRequest.signedHeaders());
-            LOGGER.info("► IS BUCKET CONTENT-TYPE INCLUDED IN SIGNING LOOP? : {}", objectRequest.contentType());
-            LOGGER.info("► ABSOLUTE OUTBOUND SIGNED PATH URL: {}", presignedRequest.url().toString());
+            LOGGER.info("🔍 RAW CREDENTIAL MATCH METRICS PASS");
+            
+            // 1. Audit your environmental property values securely
+            LOGGER.info("► ENV - AWS_S3_ACCESS_KEY_ID : {}", 
+                (accessKey != null && accessKey.length() > 4) ? accessKey.substring(0, 4) + "..." + accessKey.substring(accessKey.length() - 4) : "INVALID");
+            LOGGER.info("► ENV - AWS_S3_SECRET_ACCESS_KEY length: {} chars", (secretKey != null) ? secretKey.length() : 0);
+            LOGGER.info("► ENV - AWS_S3_REGION / BUCKET : {} / {}", region, bucketName);
+            
+            // 2. Audit the actual URL parameters broken down by the AWS SDK
+            URL targetUri = presignedRequest.url();
+            String query = targetUri.getQuery();
+            LOGGER.info("► S3 SDK - Full Generated Query String: {}", query);
+            
+            // 3. Break down the parameters exactly as the S3 server reads them
+            java.util.regex.Pattern.compile("&").splitAsStream(query).forEach(param -> {
+                LOGGER.info("   ├── Parameter: {}", param);
+            });
             LOGGER.info("====================================================================");
             
             Map<String, String> responseMap = new HashMap<>();
@@ -88,6 +96,7 @@ public class StorageService {
             return responseMap;
         }
     }
+
 
     /**
      * Streams video chunks from the bucket straight onto the platform's free temporary file scratchpad.
