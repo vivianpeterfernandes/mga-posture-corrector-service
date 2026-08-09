@@ -4,9 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
-import com.mygym.app.config.SecurityConfig;
-
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -23,8 +20,9 @@ import java.util.UUID;
 
 @Service
 public class StorageService {
-	
-	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityConfig.class);
+    
+    // 🎯 INITIALIZE EXPLICIT DIAGNOSTIC LOGGER BOUND TO THIS TIER
+    private static final Logger LOGGER = LoggerFactory.getLogger(StorageService.class);
 
     @Value("${AWS_S3_ENDPOINT}")
     private String endpoint;
@@ -51,16 +49,15 @@ public class StorageService {
         try (S3Presigner presigner = S3Presigner.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of(region))
-                .serviceConfiguration(S3Configuration.builder()
-                        .pathStyleAccessEnabled(true)
-                        .build())
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
                 .build()) {
 
-            // 🎯 THE FIX: Force the Java SDK to include the UNSIGNED-PAYLOAD header in the cryptographic signature!
+            // 🎯 CONFIGURE TRACKING OBJECT
             PutObjectRequest objectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(uniqueFileName)
-                    .overrideConfiguration(b -> b.putHeader("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"))
+                    // If you added an overrideConfiguration header injection block, it maps here
+                    // .overrideConfiguration(b -> b.putHeader("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"))
                     .build();
 
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
@@ -68,11 +65,21 @@ public class StorageService {
                     .putObjectRequest(objectRequest)
                     .build();
 
+            // 🎯 COMPUTE GENERATED SIGNATURE PROPERTIES
             PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
             
-            LOGGER.info("🔮 GENERATED PRESIGNED URL ROUTE: {}", presignedRequest.url().toString());
-            LOGGER.info("🔮 SIGNED HEADERS VERIFICATION ARRAY: {}", presignedRequest.signedHeaders());
-
+            // =====================================================================
+            // 🔮 HIGH-DENSITY RUNTIME AUDIT LOG MATRIX (Wipes out Guesswork)
+            // =====================================================================
+            LOGGER.info("====================================================================");
+            LOGGER.info("🔍 DIAGNOSTIC CONTAINER TRACE ID: STORAGE-SERVICE-LIVE-AUDIT");
+            LOGGER.info("► CURRENT SYSTEM DIRECTORY (user.dir): {}", System.getProperty("user.dir"));
+            LOGGER.info("► TARGET S3 BUCKET / ENDPOINT DESTINATION: {} / {}", bucketName, endpoint);
+            LOGGER.info("► EXTRACTED CRITICAL SIGNED HEADERS ARRAY: {}", presignedRequest.signedHeaders());
+            LOGGER.info("► IS BUCKET CONTENT-TYPE INCLUDED IN SIGNING LOOP? : {}", objectRequest.contentType());
+            LOGGER.info("► ABSOLUTE OUTBOUND SIGNED PATH URL: {}", presignedRequest.url().toString());
+            LOGGER.info("====================================================================");
+            
             Map<String, String> responseMap = new HashMap<>();
             responseMap.putAll(Map.of(
                 "uploadUrl", presignedRequest.url().toString(),
@@ -82,7 +89,6 @@ public class StorageService {
         }
     }
 
-    
     /**
      * Streams video chunks from the bucket straight onto the platform's free temporary file scratchpad.
      */
