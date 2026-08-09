@@ -47,30 +47,32 @@ public class SquatAnalysisService {
      * Processes video files streamed directly down from your Supabase Object Storage bucket.
      */
     public SquatAnalysisResult analyzeSquatVideoFile(File videoFile) throws Exception {
-        try {
-            double totalVerticalLength = 0;
-            long processedFramesCount = 0;
-            
-            List<Double> bottomAngles = new ArrayList<>();
-            double deepestKneeAngle = 180.0;
-            double maxForwardLean = 0.0;
-            
-            boolean inSquatZone = false;
-            double currentRepMinAngle = 180.0;
-            double currentRepMaxLean = 0.0;
-            int repCounter = 0;
+    try {
+        double totalVerticalLength = 0;
+        long processedFramesCount = 0;
+        
+        List<Double> bottomAngles = new ArrayList<>();
+        double deepestKneeAngle = 180.0;
+        double maxForwardLean = 0.0;
+        
+        boolean inSquatZone = false;
+        double currentRepMinAngle = 180.0;
+        double currentRepMaxLean = 0.0;
+        int repCounter = 0;
 
-            try (org.bytedeco.javacv.FFmpegFrameGrabber grabber = new org.bytedeco.javacv.FFmpegFrameGrabber(videoFile);
-                 org.bytedeco.javacv.Java2DFrameConverter converter = new org.bytedeco.javacv.Java2DFrameConverter()) {
-                
-                grabber.setImageMode(org.bytedeco.javacv.FrameGrabber.ImageMode.COLOR);
-                grabber.start();
-                
-                org.bytedeco.javacv.Frame frame;
-                int counter = 0;
-                int frameInterval = 3;
+        try (org.bytedeco.javacv.FFmpegFrameGrabber grabber = new org.bytedeco.javacv.FFmpegFrameGrabber(videoFile);
+             org.bytedeco.javacv.Java2DFrameConverter converter = new org.bytedeco.javacv.Java2DFrameConverter()) {
+            
+            grabber.setImageMode(org.bytedeco.javacv.FrameGrabber.ImageMode.COLOR);
+            grabber.start();
+            
+            org.bytedeco.javacv.Frame frame;
+            int counter = 0;
+            int frameInterval = 3;
 
-                while ((frame = grabber.grabImage()) != null) {
+            while ((frame = grabber.grabImage()) != null) {
+                // 🎯 NESTED TRY-FINALLY CONTEXT BALANCING BLOCK
+                try {
                     counter++;
                     if (counter % frameInterval == 0) {
                         BufferedImage rawCanvas = converter.convert(frame);
@@ -116,45 +118,51 @@ public class SquatAnalysisService {
                             }
                         }
                     }
+                } finally {
+                    // 🎯 CRITICAL NATIVE MEMORY RECLAIM PATTERN
+                    // Explicitly cleans the underlying unmanaged AVFrame allocations on every single loop turn
+                    if (frame != null) {
+                        frame.close();
+                    }
                 }
-                grabber.stop();
             }
-
-            if (processedFramesCount == 0) {
-                throw new IllegalArgumentException("Invalid clip asset input: No motion frames could be detected.");
-            }
-
-            double avgVerticalLength = totalVerticalLength / processedFramesCount;
-            LOGGER.debug("Processed Frames: {} | Calculated Avg Vertical Distance: {}", processedFramesCount, avgVerticalLength);
-            
-            if (avgVerticalLength < 45.0) {
-                throw new IllegalArgumentException(
-                    "Exercise Rejected: The uploaded video does not appear to be a squat. " +
-                    "Please upload a clear, side-profile video of a squat movement."
-                );
-            }
-
-            String videoUrl = ""; // Bypasses video rendering pipeline to ensure top performance
-
-            StringBuilder feedback = new StringBuilder();
-            feedback.append(String.format("Workout Completed! Tracked %d valid parallel repetitions. ", repCounter));
-            feedback.append(String.format("Peak overall depth achieved: %d°. ", Math.round(deepestKneeAngle)));
-
-            if (maxForwardLean > 40.0) {
-                feedback.append(String.format("Form Warning: Excessive torso leaning detected (%d°). Keep your chest up to protect your lower back. ", Math.round(maxForwardLean)));
-            }
-
-            // 🎯 CONSTRUCTOR REPAIR: Perfectly maps your parameters directly to your model file schema
-            return new SquatAnalysisResult(
-                "SQUAT", repCounter, deepestKneeAngle, maxForwardLean, false, feedback.toString(), bottomAngles, videoUrl
-            );
-            
-        } finally {
-            // 🎯 SYSTEM MEMORY DRAIN TRAP: Instantly forces GC optimization updates
-            System.gc();
-            System.runFinalization();
+            grabber.stop();
         }
+
+        if (processedFramesCount == 0) {
+            throw new IllegalArgumentException("Invalid clip asset input: No motion frames could be detected.");
+        }
+
+        double avgVerticalLength = totalVerticalLength / processedFramesCount;
+        LOGGER.debug("Processed Frames: {} | Calculated Avg Vertical Distance: {}", processedFramesCount, avgVerticalLength);
+        
+        if (avgVerticalLength < 45.0) {
+            throw new IllegalArgumentException(
+                "Exercise Rejected: The uploaded video does not appear to be a squat. " +
+                "Please upload a clear, side-profile video of a squat movement."
+            );
+        }
+
+        String videoUrl = ""; // Explicitly bypasses processing and rendering to optimize platform operations
+
+        StringBuilder feedback = new StringBuilder();
+        feedback.append(String.format("Workout Completed! Tracked %d valid parallel repetitions. ", repCounter));
+        feedback.append(String.format("Peak overall depth achieved: %d°. ", Math.round(deepestKneeAngle)));
+
+        if (maxForwardLean > 40.0) {
+            feedback.append(String.format("Form Warning: Excessive torso leaning detected (%d°). Keep your chest up to protect your lower back. ", Math.round(maxForwardLean)));
+        }
+
+        return new SquatAnalysisResult(
+            "SQUAT", repCounter, deepestKneeAngle, maxForwardLean, false, feedback.toString(), bottomAngles, videoUrl
+        );
+        
+    } finally {
+        // System-level garbage collections safely retain a global operational trace loop
+        System.gc();
+        System.runFinalization();
     }
+}
 
     private double calculateJointAngle(double hX, double hY, double kX, double kY, double aX, double aY) {
         double a2 = Math.pow(kX - hX, 2) + Math.pow(kY - hY, 2);   

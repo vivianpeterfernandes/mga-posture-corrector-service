@@ -34,12 +34,16 @@ public class VideoProcessingService {
             int counter = 0;
 
             while ((frame = grabber.grabImage()) != null) {
-                counter++;
-                if (counter % frameInterval == 0) {
-                    BufferedImage rawCanvas = converter.convert(frame);
-                    if (rawCanvas != null) {
-                        frameList.add(cloneBufferedImage(rawCanvas)); 
+                try {
+                    counter++;
+                    if (counter % frameInterval == 0) {
+                        BufferedImage rawCanvas = converter.convert(frame);
+                        if (rawCanvas != null) {
+                            frameList.add(cloneBufferedImage(rawCanvas)); 
+                        }
                     }
+                } finally {
+                    if (frame != null) frame.close(); // Prevent hidden thread leaks
                 }
             }
             grabber.stop();
