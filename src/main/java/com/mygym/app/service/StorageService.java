@@ -44,7 +44,6 @@ public class StorageService {
     public Map<String, String> generateUploadUrl(String originalFileName) {
         String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
         
-        // Direct System Environment Variable Credential Mappings
         System.setProperty("aws.accessKeyId", accessKey);
         System.setProperty("aws.secretAccessKey", secretKey);
         System.setProperty("aws.region", region);
@@ -54,19 +53,16 @@ public class StorageService {
                 .region(Region.of(region))
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)
-                        .chunkedEncodingEnabled(false) // Speeds up Flutter multi-part stream handshakes
                         .build())
                 .build()) {
 
-        	PutObjectRequest objectRequest = PutObjectRequest.builder()
-        	        .bucket(bucketName)
-        	        .key(uniqueFileName)
-        	        .contentType("video/mp4")
-        	        // 🎯 ADD THIS FIX: Disables strict SDK header validation tracking requirements
-        	        .overrideConfiguration(b -> b.putHeader("Content-Type", "video/mp4"))
-        	        .build();
+            // 🎯 FIX: Remove strict .contentType("video/mp4") matching constraints from the signing loop.
+            // This stops Java from expecting case-sensitive validation keys on the cloud bucket side!
+            PutObjectRequest objectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(uniqueFileName)
+                    .build();
 
-            // 🎯 LINK UNLOCK WINDOW: Valid for 15 minutes max
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
                     .signatureDuration(Duration.ofMinutes(15))
                     .putObjectRequest(objectRequest)
@@ -74,6 +70,10 @@ public class StorageService {
 
             PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
             
+            // 🎯 BACKEND DIAGNOSTIC LOG INSIGHT:
+            LOGGER.info("🔮 GENERATED PRESIGNED URL ROUTE: {}", presignedRequest.url().toString());
+            LOGGER.info("🔮 SIGNED HEADERS VERIFICATION ARRAY: {}", presignedRequest.signedHeaders());
+
             Map<String, String> responseMap = new HashMap<>();
             responseMap.putAll(Map.of(
                 "uploadUrl", presignedRequest.url().toString(),
