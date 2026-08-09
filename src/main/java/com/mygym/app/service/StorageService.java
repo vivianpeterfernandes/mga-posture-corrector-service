@@ -58,11 +58,13 @@ public class StorageService {
                         .build())
                 .build()) {
 
-            PutObjectRequest objectRequest = PutObjectRequest.builder()
-            		.bucket(bucketName)
-                    .key(uniqueFileName)
-                    .contentType("video/mp4")
-                    .build();
+        	PutObjectRequest objectRequest = PutObjectRequest.builder()
+        	        .bucket(bucketName)
+        	        .key(uniqueFileName)
+        	        .contentType("video/mp4")
+        	        // 🎯 ADD THIS FIX: Disables strict SDK header validation tracking requirements
+        	        .overrideConfiguration(b -> b.putHeader("Content-Type", "video/mp4"))
+        	        .build();
 
             // 🎯 LINK UNLOCK WINDOW: Valid for 15 minutes max
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
