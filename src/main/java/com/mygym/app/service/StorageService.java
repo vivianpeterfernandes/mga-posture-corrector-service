@@ -52,7 +52,10 @@ public class StorageService {
         try (S3Presigner presigner = S3Presigner.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of(region))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .chunkedEncodingEnabled(false) // Speeds up Flutter multi-part stream handshakes
+                        .build())
                 .build()) {
 
             PutObjectRequest objectRequest = PutObjectRequest.builder()
