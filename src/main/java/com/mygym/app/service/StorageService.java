@@ -56,8 +56,7 @@ public class StorageService {
                         .build())
                 .build()) {
 
-            // 🎯 THE MANDATORY BACK-END FIX: 
-            // Force the AWS SDK to sign the UNSIGNED-PAYLOAD header key during pre-signature computation!
+            // 🎯 THE FIX: Force the Java SDK to include the UNSIGNED-PAYLOAD header in the cryptographic signature!
             PutObjectRequest objectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(uniqueFileName)
