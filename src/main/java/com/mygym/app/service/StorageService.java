@@ -40,62 +40,42 @@ public class StorageService {
     @Value("${AWS_S3_BUCKET_NAME:gym-videos}")
     private String bucketName;
 
-    public Map<String, String> generateUploadUrl(String originalFileName) {
-        String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
+public Map<String, String> generateUploadUrl(String originalFileName) {
+    String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
+    
+    System.setProperty("aws.accessKeyId", accessKey);
+    System.setProperty("aws.secretAccessKey", secretKey);
+    System.setProperty("aws.region", region);
+
+    try (S3Presigner presigner = S3Presigner.builder()
+            .endpointOverride(URI.create(endpoint))
+            .region(Region.of(region))
+            .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+            .build()) {
+
+        // 🎯 THE MANDATORY BACK-END FIX: 
+        // Force the AWS SDK to sign the UNSIGNED-PAYLOAD header key during offline pre-signature computation!
+        PutObjectRequest objectRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(uniqueFileName)
+                .overrideConfiguration(b -> b.putHeader("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"))
+                .build();
+
+        PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(15))
+                .putObjectRequest(objectRequest)
+                .build();
+
+        PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
         
-        System.setProperty("aws.accessKeyId", accessKey);
-        System.setProperty("aws.secretAccessKey", secretKey);
-        System.setProperty("aws.region", region);
-
-        try (S3Presigner presigner = S3Presigner.builder()
-                .endpointOverride(URI.create(endpoint))
-                .region(Region.of(region))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-                .build()) {
-
-            PutObjectRequest objectRequest = PutObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(uniqueFileName)
-                    .build();
-
-            PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
-                    .signatureDuration(Duration.ofMinutes(15))
-                    .putObjectRequest(objectRequest)
-                    .build();
-
-            PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
-            
-            // =====================================================================
-            // 🔮 RAW CREDENTIAL AUDIT LOGGER (Zero Guesswork Alignment)
-            // =====================================================================
-            LOGGER.info("====================================================================");
-            LOGGER.info("🔍 RAW CREDENTIAL MATCH METRICS PASS");
-            
-            // 1. Audit your environmental property values securely
-            LOGGER.info("► ENV - AWS_S3_ACCESS_KEY_ID : {}", 
-                (accessKey != null && accessKey.length() > 4) ? accessKey.substring(0, 4) + "..." + accessKey.substring(accessKey.length() - 4) : "INVALID");
-            LOGGER.info("► ENV - AWS_S3_SECRET_ACCESS_KEY length: {} chars", (secretKey != null) ? secretKey.length() : 0);
-            LOGGER.info("► ENV - AWS_S3_REGION / BUCKET : {} / {}", region, bucketName);
-            
-            // 2. Audit the actual URL parameters broken down by the AWS SDK
-            URL targetUri = presignedRequest.url();
-            String query = targetUri.getQuery();
-            LOGGER.info("► S3 SDK - Full Generated Query String: {}", query);
-            
-            // 3. Break down the parameters exactly as the S3 server reads them
-            java.util.regex.Pattern.compile("&").splitAsStream(query).forEach(param -> {
-                LOGGER.info("   ├── Parameter: {}", param);
-            });
-            LOGGER.info("====================================================================");
-            
-            Map<String, String> responseMap = new HashMap<>();
-            responseMap.putAll(Map.of(
-                "uploadUrl", presignedRequest.url().toString(),
-                "fileKey", uniqueFileName
-            ));
-            return responseMap;
-        }
+        Map<String, String> responseMap = new HashMap<>();
+        responseMap.putAll(Map.of(
+            "uploadUrl", presignedRequest.url().toString(),
+            "fileKey", uniqueFileName
+        ));
+        return responseMap;
     }
+}
 
 
     /**
