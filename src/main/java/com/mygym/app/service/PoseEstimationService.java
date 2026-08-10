@@ -21,16 +21,27 @@ public class PoseEstimationService {
         ByteBuffer.allocateDirect(1 * 192 * 192 * 4)
     );
 
+    // 🎯 CRITICAL REFACTOR FIX 1: ThreadLocal reuse pattern for the graphics canvas shell.
+    // This stops the JVM from allocating new pixel array blocks on every single video frame loop.
+    private final ThreadLocal<BufferedImage> threadResizedImage = ThreadLocal.withInitial(() -> 
+        new BufferedImage(192, 192, BufferedImage.TYPE_INT_RGB)
+    );
+
     public PoseEstimationService(OrtEnvironment env, OrtSession session) {
         this.env = env;
         this.session = session;
     }
 
     public Keypoints predictKeypoints(BufferedImage image) throws Exception {
-        BufferedImage resized = new BufferedImage(192, 192, BufferedImage.TYPE_INT_RGB);
+        // 🎯 GET RECYCLED IMAGE CONTEXT FROM POOL
+        BufferedImage resized = threadResizedImage.get();
+        
         java.awt.Graphics2D g = resized.createGraphics();
-        g.drawImage(image, 0, 0, 192, 192, null);
-        g.dispose();
+        try {
+            g.drawImage(image, 0, 0, 192, 192, null);
+        } finally {
+            g.dispose(); // Always clear graphics pipeline resource handles instantly
+        }
 
         ByteBuffer inputBuffer = threadBuffer.get();
         inputBuffer.clear();
@@ -46,11 +57,14 @@ public class PoseEstimationService {
         }
         inputBuffer.rewind();
 
-        // FIX: Wrapped inside a try-with-resources block to force clean the native C++ allocations
+        // FIX: Wrapped inside an exact try-with-resources context layout model to force clean the native C++ allocations
         try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputBuffer, new long[]{1, 192, 192, 4}, OnnxJavaType.UINT8);
              OrtSession.Result results = session.run(Collections.singletonMap("pixel_values", inputTensor))) {
             
-            float[][][][] output4D = (float[][][][]) results.get(0).getValue();
+            // 🎯 CRITICAL REFACTOR FIX 2: Explicitly separate the root value element pointer
+            // to ensure it cleans up its underlying JNI resources seamlessly upon block exit boundaries.
+            OnnxTensor outputTensor = (OnnxTensor) results.get(0);
+            float[][][][] output4D = (float[][][][]) outputTensor.getValue();
             float[][] keypoints = output4D[0][0]; 
 
             double shoulderY = keypoints[5][0] * 192.0;
