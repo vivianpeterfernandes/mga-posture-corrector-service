@@ -1,23 +1,23 @@
 package com.mygym.app.service;
 
+import java.io.File;
+import java.net.URI;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
-
-import java.io.File;
-import java.net.URI;
-import java.net.URL;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class StorageService {
@@ -40,43 +40,42 @@ public class StorageService {
     @Value("${AWS_S3_BUCKET_NAME:gym-videos}")
     private String bucketName;
 
-public Map<String, String> generateUploadUrl(String originalFileName) {
-    String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
-    
-    System.setProperty("aws.accessKeyId", accessKey);
-    System.setProperty("aws.secretAccessKey", secretKey);
-    System.setProperty("aws.region", region);
-
-    try (S3Presigner presigner = S3Presigner.builder()
-            .endpointOverride(URI.create(endpoint))
-            .region(Region.of(region))
-            .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-            .build()) {
-
-        // 🎯 THE MANDATORY BACK-END FIX: 
-        // Force the AWS SDK to sign the UNSIGNED-PAYLOAD header key during offline pre-signature computation!
-        PutObjectRequest objectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(uniqueFileName)
-                .overrideConfiguration(b -> b.putHeader("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"))
-                .build();
-
-        PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofMinutes(15))
-                .putObjectRequest(objectRequest)
-                .build();
-
-        PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
+    public Map<String, String> generateUploadUrl(String originalFileName) {
+        String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
         
-        Map<String, String> responseMap = new HashMap<>();
-        responseMap.putAll(Map.of(
-            "uploadUrl", presignedRequest.url().toString(),
-            "fileKey", uniqueFileName
-        ));
-        return responseMap;
-    }
-}
+        System.setProperty("aws.accessKeyId", accessKey);
+        System.setProperty("aws.secretAccessKey", secretKey);
+        System.setProperty("aws.region", region);
 
+        try (S3Presigner presigner = S3Presigner.builder()
+                .endpointOverride(URI.create(endpoint))
+                .region(Region.of(region))
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+                .build()) {
+
+            // 🎯 THE MANDATORY BACK-END REALIGNMENT:
+            // Force the local S3 SDK compiler to include content-type inside the offline cryptographic signature calculation loop!
+            PutObjectRequest objectRequest = PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(uniqueFileName)
+                    .contentType("video/mp4") // Signs exactly this content type string value
+                    .build();
+
+            PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
+                    .signatureDuration(Duration.ofMinutes(15))
+                    .putObjectRequest(objectRequest)
+                    .build();
+
+            PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
+            
+            Map<String, String> responseMap = new HashMap<>();
+            responseMap.putAll(Map.of(
+                "uploadUrl", presignedRequest.url().toString(),
+                "fileKey", uniqueFileName
+            ));
+            return responseMap;
+        }
+    }
 
     /**
      * Streams video chunks from the bucket straight onto the platform's free temporary file scratchpad.
