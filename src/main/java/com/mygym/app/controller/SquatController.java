@@ -1,6 +1,5 @@
 package com.mygym.app.controller;
 
-import java.io.File;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -17,39 +16,36 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.mygym.app.model.SquatAnalysisResult;
 import com.mygym.app.service.SquatAnalysisService;
-import com.mygym.app.service.StorageService;
 
 @RestController
-@RequestMapping({"/api/analyze", "/api/analyze/"})
+@RequestMapping("/api/analyze")
 @CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.OPTIONS})
 public class SquatController {
 	
-	private static final Logger LOGGER = LoggerFactory.getLogger(SquatController.class);
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(SquatController.class);
     private final SquatAnalysisService squatAnalysisService;
-    private final StorageService storageService;
 
-    // 🎯 Constructor Injection mapping including your new Storage Service bean
-    public SquatController(SquatAnalysisService squatAnalysisService, StorageService storageService) {
+    // 🎯 Decoupled Constructor Injection: Requires dependency ONLY on the Service tier
+    public SquatController(SquatAnalysisService squatAnalysisService) {
         this.squatAnalysisService = squatAnalysisService;
-        this.storageService = storageService;
     }
 
     /**
-     * 🎯 STEP 1 ENDPOINT: Generates a lightweight, secure upload path signature for Flutter.
+     * 🎯 STEP 1 ENDPOINT: Delegates upload URL generation to the service layer.
      * Accessible via GET: /api/analyze/request-url?fileName=squat_video.mp4
      */
     @GetMapping("/request-url")
     public ResponseEntity<Map<String, String>> getUploadUrl(@RequestParam("fileName") String fileName) {
         try {
-            return ResponseEntity.ok(storageService.generateUploadUrl(fileName));
+            return ResponseEntity.ok(squatAnalysisService.getSecureUploadPath(fileName));
         } catch (Exception e) {
+            LOGGER.error("❌ Failed to process request-url generation: {}", e.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "Failed to generate presigned upload route: " + e.getMessage()));
         }
     }
 
     /**
-     * 🎯 STEP 2 ENDPOINT: Processes video data using a lightweight link string instead of heavy files.
+     * 🎯 STEP 2 ENDPOINT: Receives payload token and delegates orchestration loop to service tier.
      * Accessible via POST: /api/analyze/squat (Payload: {"fileKey": "unique_uuid_video.mp4"})
      */
     @PostMapping("/squat")
@@ -59,14 +55,9 @@ public class SquatController {
             return ResponseEntity.status(400).body(Map.of("success", false, "error", "Missing required payload parameter: fileKey"));
         }
 
-        File temporaryVideoFile = null;
         try {
-            // 🎯 DOWNLOAD BUFFER: Stream the file from Supabase directly to your free container scratch space
-            temporaryVideoFile = storageService.downloadFileFromStorage(fileKey);
-
-            // 🎯 ANALYSIS CORES: Adapt your service signature interface loop to consume a temporary java.io.File wrapper
-            // Note: Update your SquatAnalysisService to handle a File/InputStream parameter type.
-            SquatAnalysisResult result = squatAnalysisService.analyzeSquatVideoFile(temporaryVideoFile);
+            // 🎯 The thin delegation checkpoint hand-off line
+            SquatAnalysisResult result = squatAnalysisService.processAndCleanupSquatVideo(fileKey);
             
             return ResponseEntity.ok(Map.of(
                 "success", true,
@@ -80,19 +71,8 @@ public class SquatController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(400).body(Map.of("success", false, "error", e.getLocalizedMessage()));
         } catch (Exception e) {
-        	LOGGER.error(e.getLocalizedMessage());
+            LOGGER.error("❌ Deep orchestration tracking error encountered: {}", e.getMessage());
             return ResponseEntity.status(500).body(Map.of("success", false, "error", "Internal server core error: " + e.getMessage()));
-        } finally {
-            // 🎯 MEMORY GARBAGE COLLECTION TRAP: Clean up scratch space immediately to avoid running out of storage
-            if (temporaryVideoFile != null && temporaryVideoFile.exists()) {
-                temporaryVideoFile.delete();
-            }
-            // 🎯 CLOUD BUCKET PURGE: Immediately erases the 70MB video file from Backblaze B2!
-            try {
-                storageService.deleteFileFromStorage(fileKey);
-            } catch (Exception e) {
-                // Failsafe catch block to prevent any secondary anomalies from disturbing tracking buffers
-            }
         }
     }
 }
