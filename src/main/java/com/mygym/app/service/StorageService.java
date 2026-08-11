@@ -1,7 +1,6 @@
 package com.mygym.app.service;
 
 import java.io.File;
-import java.net.URI;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,8 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
@@ -21,124 +21,71 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 @Service
 public class StorageService {
-    
-    // 🎯 INITIALIZE EXPLICIT DIAGNOSTIC LOGGER BOUND TO THIS TIER
+
     private static final Logger LOGGER = LoggerFactory.getLogger(StorageService.class);
 
-    @Value("${AWS_S3_ENDPOINT}")
-    private String endpoint;
+    private final S3Presigner presigner;
+    private final S3Client s3Client;
 
-    @Value("${AWS_S3_REGION}")
-    private String region;
-
-    @Value("${AWS_S3_ACCESS_KEY_ID}")
-    private String accessKey;
-
-    @Value("${AWS_S3_SECRET_ACCESS_KEY}")
-    private String secretKey;
-    
     @Value("${AWS_S3_BUCKET_NAME:gym-videos}")
     private String bucketName;
 
+    public StorageService(S3Presigner presigner, S3Client s3Client) {
+        this.presigner = presigner;
+        this.s3Client = s3Client;
+    }
+
     public Map<String, String> generateUploadUrl(String originalFileName) {
         String uniqueFileName = UUID.randomUUID().toString() + "_" + originalFileName;
-        
-        System.setProperty("aws.accessKeyId", accessKey);
-        System.setProperty("aws.secretAccessKey", secretKey);
-        System.setProperty("aws.region", region);
 
-        try (S3Presigner presigner = S3Presigner.builder()
-                .endpointOverride(URI.create(endpoint))
-                .region(Region.of(region))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-                .build()) {
+        PutObjectRequest objectRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(uniqueFileName)
+                .contentType("video/mp4")
+                .build();
 
-            // 🎯 THE MANDATORY BACK-END REALIGNMENT:
-            // Force the local S3 SDK compiler to include content-type inside the offline cryptographic signature calculation loop!
-            PutObjectRequest objectRequest = PutObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(uniqueFileName)
-                    .contentType("video/mp4") // Signs exactly this content type string value
-                    .build();
+        PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(15))
+                .putObjectRequest(objectRequest)
+                .build();
 
-            PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
-                    .signatureDuration(Duration.ofMinutes(15))
-                    .putObjectRequest(objectRequest)
-                    .build();
+        PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
 
-            PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
-            
-            Map<String, String> responseMap = new HashMap<>();
-            responseMap.putAll(Map.of(
-                "uploadUrl", presignedRequest.url().toString(),
-                "fileKey", uniqueFileName
-            ));
-            return responseMap;
-        }
+        Map<String, String> responseMap = new HashMap<>();
+        responseMap.put("uploadUrl", presignedRequest.url().toString());
+        responseMap.put("fileKey", uniqueFileName);
+        return responseMap;
     }
 
-    /**
-     * Streams video chunks from the bucket straight onto the platform's free temporary file scratchpad.
-     */
     public File downloadFileFromStorage(String fileKey) throws Exception {
-        System.setProperty("aws.accessKeyId", accessKey);
-        System.setProperty("aws.secretAccessKey", secretKey);
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(fileKey)
+                .build();
 
-        try (software.amazon.awssdk.services.s3.S3Client s3Client = software.amazon.awssdk.services.s3.S3Client.builder()
-                .endpointOverride(URI.create(endpoint))
-                .region(Region.of(region))
-                .forcePathStyle(true)
-                .build()) {
+        File tempFile = File.createTempFile("mga_upload_", ".mp4");
 
-            software.amazon.awssdk.services.s3.model.GetObjectRequest getObjectRequest = software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
-            		.bucket(bucketName)
-                    .key(fileKey)
-                    .build();
-
-            // Create a temporary tracking file descriptor path within the runtime container
-            File tempFile = File.createTempFile("mga_upload_", ".mp4");
-            
-            try (software.amazon.awssdk.core.ResponseInputStream<?> s3Stream = s3Client.getObject(getObjectRequest)) {
-                
-                java.nio.file.Files.copy(s3Stream, tempFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-            
-            LOGGER.info("🎯 Successfully downloaded video file onto container scratchpad. Size: {} bytes", tempFile.length());
-            return tempFile;
+        try (var s3Stream = s3Client.getObject(getObjectRequest)) {
+            java.nio.file.Files.copy(s3Stream, tempFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
+
+        LOGGER.info("🎯 Successfully downloaded video file onto container scratchpad. Size: {} bytes", tempFile.length());
+        return tempFile;
     }
-    
-    /**
-     * 🎯 IMMEDIATE CLOUD CLEANUP
-     * Erases the targeted video file from Backblaze B2 instantly.
-     */
+
     public void deleteFileFromStorage(String fileKey) {
         if (fileKey == null || fileKey.isBlank()) return;
 
-        System.setProperty("aws.accessKeyId", accessKey);
-        System.setProperty("aws.secretAccessKey", secretKey);
-        System.setProperty("aws.region", region);
-
-        try (software.amazon.awssdk.services.s3.S3Client s3Client = software.amazon.awssdk.services.s3.S3Client.builder()
-                .endpointOverride(URI.create(endpoint))
-                .region(software.amazon.awssdk.regions.Region.of(region))
-                .forcePathStyle(true)
-                .build()) {
-
-            software.amazon.awssdk.services.s3.model.DeleteObjectRequest deleteRequest = 
-                software.amazon.awssdk.services.s3.model.DeleteObjectRequest.builder()
-                    .bucket("gym-videos")
+        try {
+            DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
+                    .bucket(bucketName) // Dynamic bucket parameter
                     .key(fileKey)
                     .build();
 
             s3Client.deleteObject(deleteRequest);
             LOGGER.info("🗑️ Successfully deleted temporary file [{}] from Backblaze B2 storage.", fileKey);
-
         } catch (Exception e) {
-            // Log as error but do not throw, so it doesn't interrupt the user's workout feedback response
             LOGGER.error("⚠️ Failed to delete file [{}] from Backblaze storage: {}", fileKey, e.getMessage());
         }
     }
-
-
 }
