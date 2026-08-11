@@ -78,7 +78,7 @@ public class StorageService {
 
         try {
             DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
-                    .bucket(bucketName) // Dynamic bucket parameter
+                    .bucket(bucketName) // ✅ FIX: Uses injected bucketName instead of hardcoded string
                     .key(fileKey)
                     .build();
 
