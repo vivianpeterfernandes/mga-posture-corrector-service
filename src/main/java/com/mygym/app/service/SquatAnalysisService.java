@@ -102,112 +102,133 @@ public class SquatAnalysisService {
 	}
 
 	public SquatAnalysisResult analyzeSquatVideoFile(File videoFile) throws Exception {
-		try {
-			double totalVerticalLength = 0;
-			long processedFramesCount = 0;
+	    org.bytedeco.javacv.FFmpegFrameGrabber grabber = null;
+	    org.bytedeco.javacv.Java2DFrameConverter converter = null;
 
-			List<Double> bottomAngles = new ArrayList<>();
-			double deepestKneeAngle = 180.0;
-			double maxForwardLean = 0.0;
+	    try {
+	        double totalVerticalLength = 0;
+	        long processedFramesCount = 0;
 
-			boolean inSquatZone = false;
-			double currentRepMinAngle = 180.0;
-			double currentRepMaxLean = 0.0;
-			int repCounter = 0;
+	        List<Double> bottomAngles = new ArrayList<>();
+	        double deepestKneeAngle = 180.0;
+	        double maxForwardLean = 0.0;
 
-			try (org.bytedeco.javacv.FFmpegFrameGrabber grabber = new org.bytedeco.javacv.FFmpegFrameGrabber(videoFile);
-					org.bytedeco.javacv.Java2DFrameConverter converter = new org.bytedeco.javacv.Java2DFrameConverter()) {
+	        boolean inSquatZone = false;
+	        double currentRepMinAngle = 180.0;
+	        double currentRepMaxLean = 0.0;
+	        int repCounter = 0;
 
-				grabber.setImageMode(org.bytedeco.javacv.FrameGrabber.ImageMode.COLOR);
-				grabber.start();
+	        // Instantiate grabber and converter outside try-with-resources to manage JNI life-cycle explicitly
+	        grabber = new org.bytedeco.javacv.FFmpegFrameGrabber(videoFile);
+	        converter = new org.bytedeco.javacv.Java2DFrameConverter();
 
-				org.bytedeco.javacv.Frame frame;
-				int counter = 0;
-				int frameInterval = 3;
+	        grabber.setImageMode(org.bytedeco.javacv.FrameGrabber.ImageMode.COLOR);
+	        grabber.start();
 
-				while ((frame = grabber.grabImage()) != null) {
-					try {
-						counter++;
-						if (counter % frameInterval == 0) {
-							BufferedImage rawCanvas = converter.convert(frame);
-							if (rawCanvas == null) continue;
+	        org.bytedeco.javacv.Frame frame;
+	        int counter = 0;
+	        int frameInterval = 3;
 
-							Keypoints kp = poseEstimationService.predictKeypoints(rawCanvas);
-							processedFramesCount++;
-							totalVerticalLength += (kp.ankleY() - kp.shoulderY());
+	        while ((frame = grabber.grabImage()) != null) {
+	            try {
+	                counter++;
+	                if (counter % frameInterval == 0) {
+	                    BufferedImage rawCanvas = converter.convert(frame);
+	                    if (rawCanvas == null) continue;
 
-							double kneeAngle = calculateJointAngle(kp.hipX(), kp.hipY(), kp.kneeX(), kp.kneeY(), kp.ankleX(), kp.ankleY());
-							double backAngle = calculateTorsoLean(kp.hipX(), kp.hipY(), kp.shoulderX(), kp.shoulderY());
+	                    Keypoints kp = poseEstimationService.predictKeypoints(rawCanvas);
+	                    processedFramesCount++;
+	                    totalVerticalLength += (kp.ankleY() - kp.shoulderY());
 
-							if (kneeAngle < deepestKneeAngle && kneeAngle > 35.0) {
-								deepestKneeAngle = kneeAngle;
-							}
-							if (kneeAngle < 110.0 && backAngle > maxForwardLean) {
-								maxForwardLean = backAngle;
-							}
+	                    double kneeAngle = calculateJointAngle(kp.hipX(), kp.hipY(), kp.kneeX(), kp.kneeY(), kp.ankleX(), kp.ankleY());
+	                    double backAngle = calculateTorsoLean(kp.hipX(), kp.hipY(), kp.shoulderX(), kp.shoulderY());
 
-							if (!inSquatZone && kneeAngle < 110.0) {
-								inSquatZone = true;
-								currentRepMinAngle = kneeAngle;
-								currentRepMaxLean = backAngle;
-							} 
-							else if (inSquatZone) {
-								if (kneeAngle < currentRepMinAngle) {
-									currentRepMinAngle = kneeAngle;
-								}
-								if (backAngle > currentRepMaxLean) {
-									currentRepMaxLean = backAngle;
-								}
+	                    if (kneeAngle < deepestKneeAngle && kneeAngle > 35.0) {
+	                        deepestKneeAngle = kneeAngle;
+	                    }
+	                    if (kneeAngle < 110.0 && backAngle > maxForwardLean) {
+	                        maxForwardLean = backAngle;
+	                    }
 
-								if (kneeAngle > 145.0) {
-									if (currentRepMinAngle <= 105.0) {
-										repCounter++;
-										bottomAngles.add(currentRepMinAngle);
-									}
-									inSquatZone = false;
-									currentRepMinAngle = 180.0;
-								}
-							}
-						}
-					} finally {
-						if (frame != null) {
-							frame.close();
-						}
-					}
-				}
-				grabber.stop();
-			}
+	                    if (!inSquatZone && kneeAngle < 110.0) {
+	                        inSquatZone = true;
+	                        currentRepMinAngle = kneeAngle;
+	                        currentRepMaxLean = backAngle;
+	                    } else if (inSquatZone) {
+	                        if (kneeAngle < currentRepMinAngle) {
+	                            currentRepMinAngle = kneeAngle;
+	                        }
+	                        if (backAngle > currentRepMaxLean) {
+	                            currentRepMaxLean = backAngle;
+	                        }
 
-			if (processedFramesCount == 0) {
-				throw new IllegalArgumentException("Invalid clip asset input: No motion frames could be detected.");
-			}
+	                        if (kneeAngle > 145.0) {
+	                            if (currentRepMinAngle <= 105.0) {
+	                                repCounter++;
+	                                bottomAngles.add(currentRepMinAngle);
+	                            }
+	                            inSquatZone = false;
+	                            currentRepMinAngle = 180.0;
+	                        }
+	                    }
+	                }
+	            } finally {
+	                // 🎯 1. Immediately free the C++ frame struct allocation after processing
+	                if (frame != null) {
+	                    frame.close();
+	                }
+	            }
+	        }
 
-			double avgVerticalLength = totalVerticalLength / processedFramesCount;
-			LOGGER.debug("Processed Frames: {} | Calculated Avg Vertical Distance: {}", processedFramesCount, avgVerticalLength);
+	        if (processedFramesCount == 0) {
+	            throw new IllegalArgumentException("Invalid clip asset input: No motion frames could be detected.");
+	        }
 
-			if (avgVerticalLength < 45.0) {
-				throw new IllegalArgumentException(
-						"Exercise Rejected: The uploaded video does not appear to be a squat. " +
-								"Please upload a clear, side-profile video of a squat movement."
-						);
-			}
+	        double avgVerticalLength = totalVerticalLength / processedFramesCount;
+	        LOGGER.debug("Processed Frames: {} | Calculated Avg Vertical Distance: {}", processedFramesCount, avgVerticalLength);
 
-			String videoUrl = ""; 
+	        if (avgVerticalLength < 45.0) {
+	            throw new IllegalArgumentException(
+	                    "Exercise Rejected: The uploaded video does not appear to be a squat. " +
+	                            "Please upload a clear, side-profile video of a squat movement."
+	            );
+	        }
 
-			StringBuilder feedback = new StringBuilder();
-			feedback.append(String.format("Workout Completed! Tracked %d valid parallel repetitions. ", repCounter));
-			feedback.append(String.format("Peak overall depth achieved: %d°. ", Math.round(deepestKneeAngle)));
+	        String videoUrl = "";
 
-			if (maxForwardLean > 40.0) {
-				feedback.append(String.format("Form Warning: Excessive torso leaning detected (%d°). Keep your chest up to protect your lower back. ", Math.round(maxForwardLean)));
-			}
-			return new SquatAnalysisResult(
-					"SQUAT", repCounter, deepestKneeAngle, maxForwardLean, false, feedback.toString(), bottomAngles, videoUrl
-					);
-		} finally {
-			System.gc();
-			System.runFinalization();
-		}
+	        StringBuilder feedback = new StringBuilder();
+	        feedback.append(String.format("Workout Completed! Tracked %d valid parallel repetitions. ", repCounter));
+	        feedback.append(String.format("Peak overall depth achieved: %d°. ", Math.round(deepestKneeAngle)));
+
+	        if (maxForwardLean > 40.0) {
+	            feedback.append(String.format("Form Warning: Excessive torso leaning detected (%d°). Keep your chest up to protect your lower back. ", Math.round(maxForwardLean)));
+	        }
+
+	        return new SquatAnalysisResult(
+	                "SQUAT", repCounter, deepestKneeAngle, maxForwardLean, false, feedback.toString(), bottomAngles, videoUrl
+	        );
+
+	    } finally {
+	        // 🎯 2. Explicit Native Memory Cleanup Pipeline
+	        if (grabber != null) {
+	            try {
+	                grabber.stop();
+	                grabber.release(); // Releases C++ FFmpeg native context structs and codec buffers
+	            } catch (Exception ignored) {}
+	        }
+	        if (converter != null) {
+	            try {
+	                converter.close(); // Releases JNI AWT image conversion memory handles
+	            } catch (Exception ignored) {}
+	        }
+
+	        // 🎯 3. Force JavaCPP Native Pointer deallocation for JavaCV/FFmpeg JNI bindings
+	        org.bytedeco.javacpp.Pointer.deallocateReferences();
+
+	        // 🎯 4. Trigger GC sweep hint
+	        System.gc();
+	        System.runFinalization();
+	    }
 	}
 
 	private double calculateJointAngle(double hX, double hY, double kX, double kY, double aX, double aY) {
