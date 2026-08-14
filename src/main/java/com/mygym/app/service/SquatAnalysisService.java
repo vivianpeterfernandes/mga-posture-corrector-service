@@ -197,7 +197,7 @@ public class SquatAnalysisService {
 	        String videoUrl = "";
 
 	        StringBuilder feedback = new StringBuilder();
-	        feedback.append(String.format("Workout Completed! Tracked %d valid parallel repetitions. ", repCounter));
+	        feedback.append(String.format("Analysis Completed! Tracked %d valid parallel repetitions. ", repCounter));
 	        feedback.append(String.format("Peak overall depth achieved: %d°. ", Math.round(deepestKneeAngle)));
 
 	        if (maxForwardLean > 40.0) {
